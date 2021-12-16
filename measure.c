@@ -1,101 +1,95 @@
-#include "stdio.h"
-
-#if defined _WIN32
-// See at https://msdn.microsoft.com/en-us/library/windows/desktop/ms740506(v=vs.85).aspx
-// link with Ws2_32.lib
-#pragma comment(lib, "Ws2_32.lib")
-#include <winsock2.h>
-#include <ws2tcpip.h>
-
-#else //  linux
-#include <stdlib.h>
-#include <errno.h>
-#include <string.h>
 #include <sys/types.h>
-#include <netinet/in.h>
-#include <arpa/inet.h>
 #include <sys/socket.h>
+#include <string.h>
+#include <arpa/inet.h>
+#include <fcntl.h>
+#include <bits/types/FILE.h>
 #include <unistd.h>
-#include <netinet/in.h>
+#include <stdio.h>
+#include <netinet/tcp.h>
+#include <stdlib.h>
 #include <time.h>
-#endif
 
-#define SERVER_IP_ADDRESS "10.0.0.18"
+char buff[256] = {0};
+int bytes_rec;
+int accp;
+socklen_t len;
+
 #define SERVER_PORT 5060
-int bytesRecv = -1;
-char buff[256];
-time_t time_start, time_end;
-
-int main()
+int main(int argc, char **argv)
 {
-  int sock = -1;
-  sock = socket(AF_INET, SOCK_STREAM, 0);
-
+  int sock = socket(AF_INET, SOCK_STREAM, 0);
   if (sock == -1)
   {
-    printf("could not create socket");
+    printf("could not create socket!!");
     return -1;
   }
 
-  struct sockaddr_in serverAddress;
-  memset(&serverAddress, 0, sizeof(serverAddress));
-  serverAddress.sin_family = AF_INET;
-  serverAddress.sin_addr.s_addr = INADDR_ANY;
-  serverAddress.sin_port = htons(SERVER_PORT); //network order
+  struct sockaddr_in server_addr;
+  memset(&server_addr, 0, sizeof(server_addr));
+  server_addr.sin_family = AF_INET;
+  server_addr.sin_port = htons(SERVER_PORT);
+  server_addr.sin_addr.s_addr = INADDR_ANY;
 
-  int b = bind(sock, (struct sockaddr *)&serverAddress, sizeof(serverAddress));
+  int b = bind(sock, (struct sockaddr *)&server_addr, sizeof(server_addr));
 
   if (b == -1)
   {
-    printf("Could Not bind");
+    printf("could not bind!!");
     return -1;
   }
 
   printf("Bind() success\n");
-  // take the file 10 times (cubic 5 times + reno 5 times)
   int lis = listen(sock, 10);
-
   if (lis == -1)
   {
-    printf("listen FAILED , EROR");
+    printf("listen FAILED , EROR!!");
     return -1;
   }
+  printf("listen() success\n");
 
   printf("Waiting for incoming TCP-connections...\n");
 
-  struct sockaddr_in senderAddress;
-  socklen_t senderAddressLen = sizeof(senderAddress);
-  int senderSocket = accept(sock, (struct sockaddr *)&senderAddress, &senderAddressLen);
-
-  if (senderSocket == -1)
+  accp = accept(sock, (struct sockaddr *)&server_addr, &len);
+  if (accp == -1)
   {
-    printf("accpet fucntion not Working!!");
+    printf("accept FAILED , EROR!!");
     return -1;
   }
 
-  printf("-----first run--------");
-  time_start = clock();
+  printf("accept() success\n");
+  int count = 4114 / 2;
+  clock_t start_t, end_t;
+  double total_t;
+  start_t = clock();
+  printf("\ntime started at: %f ,  with cubic\n", (double)start_t / CLOCKS_PER_SEC);
+
   do
   {
-
-    bytesRecv = recv(senderSocket, buff, strlen(buff), 0);
-  } while (bytesRecv > 0);
-  time_end = clock() - time_start;
-  double time_first = (double)(time_end / CLOCKS_PER_SEC);
-
-  printf("-----second run--------");
-
-  time_start = clock();
+    bytes_rec = recv(accp, buff, 256, 0);
+    count--;
+  } while (count > 0);
+  end_t = clock();
+  printf("\ntime ended at: %f ,  with cubic\n", (double)end_t / CLOCKS_PER_SEC);
+  double time_first = (double)(end_t - start_t) / CLOCKS_PER_SEC;
+  printf("\ntotal time cubic: %f \n", time_first);
+  printf("\n----------SWITCHING ALGOS-----------\n");
+  start_t = clock();
+  printf("\ntime started at: %f ,  with reno\n", (double)start_t / CLOCKS_PER_SEC);
   do
   {
+    bytes_rec = recv(accp, buff, 256, 0);
 
-    bytesRecv = recv(senderSocket, buff, strlen(buff), 0);
-  } while (bytesRecv > 0);
-  double time2 = (double)(time_end / CLOCKS_PER_SEC);
-  double time_second = time_end;
+  } while (bytes_rec > 0);
 
-  printf("First: %f , Second: %f", time_first, time_second);
-  close(sock);
+  end_t = clock();
+  printf("\ntime ended at: %f ,  with reno\n", (double)end_t / CLOCKS_PER_SEC);
+
+  double time_second = (double)(end_t - start_t) / CLOCKS_PER_SEC;
+  printf("\ntotal time reno: %f \n", time_second);
+  total_t = time_first + time_second;
+
+  printf("\ntime finished at: %f ,  for both CC algos\n", total_t);
 
   return 0;
 }
